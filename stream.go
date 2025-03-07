@@ -23,6 +23,18 @@ import (
 	"time"
 )
 
+type StreamWriterOpts struct {
+	Append bool
+}
+
+func parseStreamWriterOpts(opts ...StreamWriterOpts) *StreamWriterOpts {
+	options := &StreamWriterOpts{}
+	for _, opt := range opts {
+		options = &opt
+	}
+	return options
+}
+
 // StreamWriter defined the type of stream writer.
 type StreamWriter struct {
 	file            *File
@@ -35,6 +47,8 @@ type StreamWriter struct {
 	mergeCellsCount int
 	mergeCells      strings.Builder
 	tableParts      string
+
+	opts *StreamWriterOpts
 }
 
 // NewStreamWriter returns stream writer struct by given worksheet name used for
@@ -111,7 +125,7 @@ type StreamWriter struct {
 //	err := sw.SetRow("A1", []interface{}{
 //	    excelize.Cell{Value: 1}},
 //	    excelize.RowOpts{StyleID: styleID, Height: 20, Hidden: false});
-func (f *File) NewStreamWriter(sheet string) (*StreamWriter, error) {
+func (f *File) NewStreamWriter(sheet string, opts ...StreamWriterOpts) (*StreamWriter, error) {
 	if err := checkSheetName(sheet); err != nil {
 		return nil, err
 	}
@@ -121,6 +135,7 @@ func (f *File) NewStreamWriter(sheet string) (*StreamWriter, error) {
 	}
 	sw := &StreamWriter{
 		file:    f,
+		opts:    parseStreamWriterOpts(opts...),
 		Sheet:   sheet,
 		SheetID: sheetID,
 	}
@@ -136,8 +151,22 @@ func (f *File) NewStreamWriter(sheet string) (*StreamWriter, error) {
 	}
 	f.streams[sheetXMLPath] = sw
 
-	_, _ = sw.rawData.WriteString(xml.Header + `<worksheet` + templateNamespaceIDMap)
-	bulkAppendFields(&sw.rawData, sw.worksheet, 2, 3)
+	// if append then find last row and shrink other bytes
+	if sw.opts.Append {
+		bytes := f.readXML(sheetXMLPath)
+		index := strings.LastIndex(string(bytes), "</row>")
+		if index != -1 {
+			_, _ = sw.rawData.WriteString(string(bytes[index]))
+		} else {
+			// Add new sheet
+			_, _ = sw.rawData.WriteString(xml.Header + `<worksheet` + templateNamespaceIDMap)
+			bulkAppendFields(&sw.rawData, sw.worksheet, 2, 3)
+		}
+	} else {
+		// Add new sheet
+		_, _ = sw.rawData.WriteString(xml.Header + `<worksheet` + templateNamespaceIDMap)
+		bulkAppendFields(&sw.rawData, sw.worksheet, 2, 3)
+	}
 	return sw, err
 }
 
