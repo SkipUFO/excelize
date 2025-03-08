@@ -151,23 +151,31 @@ func (f *File) NewStreamWriter(sheet string, opts ...StreamWriterOpts) (*StreamW
 	}
 	f.streams[sheetXMLPath] = sw
 
-	// if append then find last row and shrink other bytes
 	if sw.opts.Append {
-		bytes := f.readXML(sheetXMLPath)
-		index := strings.LastIndex(string(bytes), "</row>")
-		if index != -1 {
-			_, _ = sw.rawData.WriteString(string(bytes[index]))
-		} else {
-			// Add new sheet
-			_, _ = sw.rawData.WriteString(xml.Header + `<worksheet` + templateNamespaceIDMap)
-			bulkAppendFields(&sw.rawData, sw.worksheet, 2, 3)
+		existingData, ok := f.readExisting(sheetXMLPath)
+		if ok {
+			_, _ = sw.rawData.Write(existingData)
+			sw.sheetWritten = true
+
+			return sw, nil
 		}
-	} else {
-		// Add new sheet
-		_, _ = sw.rawData.WriteString(xml.Header + `<worksheet` + templateNamespaceIDMap)
-		bulkAppendFields(&sw.rawData, sw.worksheet, 2, 3)
 	}
+
+	_, _ = sw.rawData.WriteString(xml.Header + `<worksheet` + templateNamespaceIDMap)
+	bulkAppendFields(&sw.rawData, sw.worksheet, 2, 3)
+
 	return sw, err
+}
+
+func (f *File) readExisting(sheet string) ([]byte, bool) {
+	bytes := f.readXML(sheet)
+	index := strings.LastIndex(string(bytes), "</row>")
+	if index == -1 {
+		return nil, false
+	}
+
+	index += len("</row>")
+	return bytes[:index], true
 }
 
 // AddTable creates an Excel table for the StreamWriter using the given
@@ -737,6 +745,7 @@ func (sw *StreamWriter) Flush() error {
 	_, _ = sw.rawData.WriteString(sw.tableParts)
 	bulkAppendFields(&sw.rawData, sw.worksheet, 40, 40)
 	_, _ = sw.rawData.WriteString(`</worksheet>`)
+
 	if err := sw.rawData.Flush(); err != nil {
 		return err
 	}
