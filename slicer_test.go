@@ -2,7 +2,6 @@ package excelize
 
 import (
 	"fmt"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"strings"
@@ -45,6 +44,7 @@ func TestSlicer(t *testing.T) {
 		Height:        200,
 		DisplayHeader: &disable,
 		ItemDesc:      true,
+		Format:        GraphicOptions{Positioning: "oneCell"},
 	}))
 	// Test get table slicers
 	slicers, err := f.GetSlicers("Sheet1")
@@ -74,23 +74,24 @@ func TestSlicer(t *testing.T) {
 	month := []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
 	year := []int{2017, 2018, 2019}
 	types := []string{"Meat", "Dairy", "Beverages", "Produce"}
+	revenue := []int{3217, 4512, 3891, 4738, 3054, 4265, 3643, 4901, 3378, 4126}
 	region := []string{"East", "West", "North", "South"}
-	assert.NoError(t, f.SetSheetRow("Sheet2", "A1", &[]string{"Month", "Year", "Type", "Sales", "Region"}))
+	assert.NoError(t, f.SetSheetRow("Sheet2", "A1", &[]string{"Month", "Year", "Type", "Revenue", "Region"}))
 	for row := 2; row < 32; row++ {
-		assert.NoError(t, f.SetCellValue("Sheet2", fmt.Sprintf("A%d", row), month[rand.Intn(12)]))
-		assert.NoError(t, f.SetCellValue("Sheet2", fmt.Sprintf("B%d", row), year[rand.Intn(3)]))
-		assert.NoError(t, f.SetCellValue("Sheet2", fmt.Sprintf("C%d", row), types[rand.Intn(4)]))
-		assert.NoError(t, f.SetCellValue("Sheet2", fmt.Sprintf("D%d", row), rand.Intn(5000)))
-		assert.NoError(t, f.SetCellValue("Sheet2", fmt.Sprintf("E%d", row), region[rand.Intn(4)]))
+		assert.NoError(t, f.SetCellValue("Sheet2", fmt.Sprintf("A%d", row), month[(row-2)%len(month)]))
+		assert.NoError(t, f.SetCellValue("Sheet2", fmt.Sprintf("B%d", row), year[(row-2)%len(year)]))
+		assert.NoError(t, f.SetCellValue("Sheet2", fmt.Sprintf("C%d", row), types[(row-2)%len(types)]))
+		assert.NoError(t, f.SetCellValue("Sheet2", fmt.Sprintf("D%d", row), revenue[(row-2)%len(revenue)]))
+		assert.NoError(t, f.SetCellValue("Sheet2", fmt.Sprintf("E%d", row), region[(row-2)%len(region)]))
 	}
 	assert.NoError(t, f.AddPivotTable(&PivotTableOptions{
 		DataRange:           "Sheet2!A1:E31",
 		PivotTableRange:     "Sheet2!G2:M34",
 		Name:                "PivotTable1",
-		Rows:                []PivotTableField{{Data: "Month", DefaultSubtotal: true}, {Data: "Year"}},
+		Rows:                []PivotTableField{{Data: "Month", DefaultSubtotal: true, SelectedItems: []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}}, {Data: "Year"}},
 		Filter:              []PivotTableField{{Data: "Region"}},
 		Columns:             []PivotTableField{{Data: "Type", DefaultSubtotal: true}},
-		Data:                []PivotTableField{{Data: "Sales", Subtotal: "Sum", Name: "Summarize by Sum"}},
+		Data:                []PivotTableField{{Data: "Revenue", Subtotal: "Sum", Name: "Summarize by Sum"}},
 		RowGrandTotals:      true,
 		ColGrandTotals:      true,
 		ShowDrill:           true,
@@ -105,7 +106,7 @@ func TestSlicer(t *testing.T) {
 		PivotTableRange: "Sheet2!U34:O2",
 		Rows:            []PivotTableField{{Data: "Month", DefaultSubtotal: true}, {Data: "Year"}},
 		Columns:         []PivotTableField{{Data: "Type", DefaultSubtotal: true}},
-		Data:            []PivotTableField{{Data: "Sales", Subtotal: "Average", Name: "Summarize by Average"}},
+		Data:            []PivotTableField{{Data: "Revenue", Subtotal: "Average", Name: "Summarize by Average"}},
 		RowGrandTotals:  true,
 		ColGrandTotals:  true,
 		ShowDrill:       true,
@@ -113,13 +114,24 @@ func TestSlicer(t *testing.T) {
 		ShowColHeaders:  true,
 		ShowLastColumn:  true,
 	}))
+
+	// Test add a pivot table slicer with selected items not in the pivot table filters field
+	assert.Equal(t, newPivotTableSelectedItemError("x", "Month"), f.AddSlicer("Sheet2", &SlicerOptions{
+		Name:          "Month",
+		Cell:          "G42",
+		TableSheet:    "Sheet2",
+		TableName:     "PivotTable1",
+		Caption:       "Month",
+		SelectedItems: []string{"x"},
+	}))
 	// Test add a pivot table slicer
 	assert.NoError(t, f.AddSlicer("Sheet2", &SlicerOptions{
-		Name:       "Month",
-		Cell:       "G42",
-		TableSheet: "Sheet2",
-		TableName:  "PivotTable1",
-		Caption:    "Month",
+		Name:          "Month",
+		Cell:          "G42",
+		TableSheet:    "Sheet2",
+		TableName:     "PivotTable1",
+		Caption:       "Month",
+		SelectedItems: []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov"},
 	}))
 	// Test add a pivot table slicer with duplicate field name
 	assert.NoError(t, f.AddSlicer("Sheet2", &SlicerOptions{
@@ -146,6 +158,7 @@ func TestSlicer(t *testing.T) {
 	assert.Equal(t, "Sheet2", slicers[0].TableSheet)
 	assert.Equal(t, "PivotTable1", slicers[0].TableName)
 	assert.Equal(t, "Month", slicers[0].Caption)
+	assert.Equal(t, []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov"}, slicers[0].SelectedItems)
 	assert.Equal(t, "Month 1", slicers[1].Name)
 	assert.Equal(t, "K42", slicers[1].Cell)
 	assert.Equal(t, "Sheet2", slicers[1].TableSheet)
@@ -174,6 +187,14 @@ func TestSlicer(t *testing.T) {
 		TableSheet: "SheetN",
 		TableName:  "Table1",
 	}), "sheet SheetN does not exist")
+	// Test add slicer with invalid positioning types
+	assert.Equal(t, f.AddSlicer("Sheet1", &SlicerOptions{
+		Name:       "Column2",
+		Cell:       "Q1",
+		TableSheet: "Sheet1",
+		TableName:  "Table1",
+		Format:     GraphicOptions{Positioning: "x"},
+	}), newInvalidOptionalValue("Positioning", "x", supportedPositioning))
 	// Test add a table slicer with not exist table name
 	assert.Equal(t, newNoExistTableError("Table2"), f.AddSlicer("Sheet1", &SlicerOptions{
 		Name:       "Column2",
@@ -399,9 +420,17 @@ func TestSlicer(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Empty(t, slicers)
 	assert.NoError(t, f.Close())
-	// Test open a workbook and get sheet slicer with invalid cell reference in the drawing part
+	// Test open a workbook and get sheet slicer with invalid cell reference in the drawing one cell anchor
 	f, err = OpenFile(workbookPath)
 	assert.NoError(t, err)
+	f.Pkg.Store("xl/drawings/drawing1.xml", []byte(fmt.Sprintf(`<wsDr xmlns="%s"><oneCellAnchor><from><col>-1</col><row>-1</row></from><mc:AlternateContent><mc:Choice xmlns:sle15="%s"><graphicFrame><nvGraphicFramePr><cNvPr id="2" name="Column1"/></nvGraphicFramePr></graphicFrame></mc:Choice></mc:AlternateContent></oneCellAnchor></wsDr>`, NameSpaceDrawingMLSpreadSheet.Value, NameSpaceDrawingMLSlicerX15.Value)))
+	_, err = f.GetSlicers("Sheet1")
+	assert.Equal(t, newCoordinatesToCellNameError(0, 0), err)
+	assert.NoError(t, f.Close())
+	// Test open a workbook and get sheet slicer with invalid cell reference in the drawing one cell anchor
+	f, err = OpenFile(workbookPath)
+	assert.NoError(t, err)
+	// Test open a workbook and get sheet slicer with invalid cell reference in the drawing two cell anchor
 	f.Pkg.Store("xl/drawings/drawing1.xml", []byte(fmt.Sprintf(`<wsDr xmlns="%s"><twoCellAnchor><from><col>-1</col><row>-1</row></from><mc:AlternateContent><mc:Choice xmlns:sle15="%s"><graphicFrame><nvGraphicFramePr><cNvPr id="2" name="Column1"/></nvGraphicFramePr></graphicFrame></mc:Choice></mc:AlternateContent></twoCellAnchor></wsDr>`, NameSpaceDrawingMLSpreadSheet.Value, NameSpaceDrawingMLSlicerX15.Value)))
 	_, err = f.GetSlicers("Sheet1")
 	assert.Equal(t, newCoordinatesToCellNameError(0, 0), err)
@@ -424,8 +453,27 @@ func TestSlicer(t *testing.T) {
 	_, err = f.GetSlicers("Sheet2")
 	assert.EqualError(t, err, "XML syntax error on line 1: invalid UTF-8")
 	assert.NoError(t, f.Close())
-
-	// Test create a workbook and get sheet slicer with invalid cell reference in the drawing part
+	// Test create a workbook and get sheet slicer with invalid cell reference in the drawing one cell anchor
+	f = NewFile()
+	assert.NoError(t, f.AddTable("Sheet1", &Table{
+		Name:  "Table1",
+		Range: "A1:D5",
+	}))
+	assert.NoError(t, f.AddSlicer("Sheet1", &SlicerOptions{
+		Name:       "Column1",
+		Cell:       "E1",
+		TableSheet: "Sheet1",
+		TableName:  "Table1",
+		Caption:    "Column1",
+		Format:     GraphicOptions{Positioning: "oneCell"},
+	}))
+	drawing, ok := f.Drawings.Load("xl/drawings/drawing1.xml")
+	assert.True(t, ok)
+	drawing.(*xlsxWsDr).OneCellAnchor[0].From = &xlsxFrom{Col: -1, Row: -1}
+	_, err = f.GetSlicers("Sheet1")
+	assert.Equal(t, newCoordinatesToCellNameError(0, 0), err)
+	assert.NoError(t, f.Close())
+	// Test create a workbook and get sheet slicer with invalid cell reference in the drawing two cell anchor
 	f = NewFile()
 	assert.NoError(t, f.AddTable("Sheet1", &Table{
 		Name:  "Table1",
@@ -438,7 +486,7 @@ func TestSlicer(t *testing.T) {
 		TableName:  "Table1",
 		Caption:    "Column1",
 	}))
-	drawing, ok := f.Drawings.Load("xl/drawings/drawing1.xml")
+	drawing, ok = f.Drawings.Load("xl/drawings/drawing1.xml")
 	assert.True(t, ok)
 	drawing.(*xlsxWsDr).TwoCellAnchor[0].From = &xlsxFrom{Col: -1, Row: -1}
 	_, err = f.GetSlicers("Sheet1")
@@ -571,6 +619,19 @@ func TestAddSlicerCache(t *testing.T) {
 	f.Pkg.Store(pivotCacheXML, MacintoshCyrillicCharset)
 	assert.EqualError(t, f.addSlicerCache("Slicer1", 0, &SlicerOptions{}, nil,
 		&PivotTableOptions{pivotCacheXML: pivotCacheXML}), "XML syntax error on line 1: invalid UTF-8")
+	// Test get slicer selected items with unsupported charset
+	assert.EqualError(t, f.extractSlicerSelectedItems(pivotCacheXML, &xlsxSlicerCacheDefinition{}, &SlicerOptions{}), "XML syntax error on line 1: invalid UTF-8")
+	// Test add slicer items with unsupported charset
+	_, err := f.buildSlicerItems(&PivotTableOptions{pivotCacheXML: pivotCacheXML}, nil)
+	assert.EqualError(t, err, "XML syntax error on line 1: invalid UTF-8")
+	// Test add slicer items without pivot field cache
+	f.Pkg.Store(pivotCacheXML, []byte(fmt.Sprintf(`<pivotCacheDefinition xmlns="%s"><cacheFields/></pivotCacheDefinition>`, NameSpaceSpreadSheet.Value)))
+	_, err = f.buildSlicerItems(&PivotTableOptions{pivotCacheXML: pivotCacheXML}, nil)
+	assert.NoError(t, err)
+	// Test add slicer items without selected items
+	f.Pkg.Store(pivotCacheXML, []byte(fmt.Sprintf(`<pivotCacheDefinition xmlns="%s"><cacheFields><cacheField name="Month"><sharedItems/></cacheField></cacheFields></pivotCacheDefinition>`, NameSpaceSpreadSheet.Value)))
+	_, err = f.buildSlicerItems(&PivotTableOptions{pivotCacheXML: pivotCacheXML}, &SlicerOptions{Name: "Month"})
+	assert.NoError(t, err)
 	assert.NoError(t, f.Close())
 }
 
